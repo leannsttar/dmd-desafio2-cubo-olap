@@ -1,0 +1,44 @@
+# Despliega y procesa el cubo sin Visual Studio.
+# Visual Studio no puede desplegar en SQL Server 2025 Standard Developer
+# ("The current edition 'StandardDeveloper64' ... is not supported by the client"),
+# pero el proveedor MSOLAP sí se conecta. Requiere compilar antes el proyecto (Build).
+param(
+  [string]$Servidor = "localhost",
+  [string]$AsDatabase = "$PSScriptRoot\..\Cubo\AW_Cubo_Ventas\bin\AW_Cubo_Ventas.asdatabase"
+)
+$ErrorActionPreference = "Stop"
+
+function Invoke-Xmla([System.Data.OleDb.OleDbConnection]$cn, [string]$xmla) {
+  $cmd = $cn.CreateCommand(); $cmd.CommandTimeout = 0; $cmd.CommandText = $xmla
+  [void]$cmd.ExecuteNonQuery()
+}
+
+$def = (Get-Content $AsDatabase -Raw -Encoding utf8) -replace '^\s*<\?xml[^>]*\?>', ''
+# El servidor rechaza los elementos de solo lectura que trae la definición compilada
+foreach ($ro in 'CreatedTimestamp','LastSchemaUpdate','LastProcessed','LastUpdate','State','ImpersonationInfoSecurity','CurrentStorageMode') {
+  $def = $def -replace "<$ro>[^<]*</$ro>", '' -replace "<$ro\s*/>", ''
+}
+$dbId = ([xml]$def).Database.ID
+$ns = 'http://schemas.microsoft.com/analysisservices/2003/engine'
+
+$cn = New-Object System.Data.OleDb.OleDbConnection "Provider=MSOLAP;Data Source=$Servidor;Integrated Security=SSPI"
+$cn.Open()
+try {
+  $t = [Diagnostics.Stopwatch]::StartNew()
+  Invoke-Xmla $cn "<Create AllowOverwrite=""true"" xmlns=""$ns""><ObjectDefinition>$def</ObjectDefinition></Create>"
+  Write-Host "1. Base '$dbId' desplegada ($([int]$t.Elapsed.TotalSeconds) s)"
+  $t.Restart()
+  Invoke-Xmla $cn "<Process xmlns=""$ns""><Object><DatabaseID>$dbId</DatabaseID></Object><Type>ProcessFull</Type></Process>"
+  Write-Host "2. ProcessFull completado ($([int]$t.Elapsed.TotalSeconds) s)"
+} finally { $cn.Close() }
+
+# Verificación: totales del cubo
+$cn = New-Object System.Data.OleDb.OleDbConnection "Provider=MSOLAP;Data Source=$Servidor;Initial Catalog=$dbId;Integrated Security=SSPI"
+$cn.Open()
+try {
+  $cmd = $cn.CreateCommand()
+  $cmd.CommandText = "SELECT { [Measures].[Ventas Totales], [Measures].[Ganancia Total], [Measures].[Margen %] } ON 0 FROM [Cubo Ventas]"
+  $r = $cmd.ExecuteReader()
+  while ($r.Read()) { for ($i = 0; $i -lt $r.FieldCount; $i++) { Write-Host ("3. {0} = {1}" -f $r.GetName($i), $r.GetValue($i)) } }
+  $r.Close()
+} finally { $cn.Close() }

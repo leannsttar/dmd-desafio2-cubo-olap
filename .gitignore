@@ -1,0 +1,10 @@
+_backup/
+_trabajo/
+capturas/
+documento/
+
+Cubo/**/bin/
+Cubo/**/obj/
+Cubo/**/.vs/
+*.user
+~$*

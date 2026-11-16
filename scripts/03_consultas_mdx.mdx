@@ -1,0 +1,74 @@
+-- Consultas MDX sobre [Cubo Ventas] (base AW_Cubo_Ventas).
+-- 2010 y 2014 son años incompletos (solo diciembre y enero).
+
+-- (a) Top 5 subcategorías por ventas en cada año completo
+WITH
+  MEMBER [Measures].[Unidades] AS
+    [Measures].[Order Quantity] + [Measures].[Order Quantity - Fact Reseller Sales]
+SELECT
+  { [Measures].[Ventas Totales], [Measures].[Unidades] } ON COLUMNS,
+  GENERATE(
+    { [Fecha].[Calendario].[Año].&[2011] : [Fecha].[Calendario].[Año].&[2013] },
+    { [Fecha].[Calendario].CurrentMember }
+    * TOPCOUNT( [Producto].[Categorías de producto].[Subcategoría].MEMBERS, 5,
+                [Measures].[Ventas Totales] )
+  ) ON ROWS
+FROM [Cubo Ventas]
+
+-- (a.2) Ventas por categoría y trimestre, con variación respecto al trimestre anterior
+WITH
+  MEMBER [Measures].[Var. QoQ %] AS
+    IIF( ISEMPTY( ([Measures].[Ventas Totales], [Fecha].[Calendario].CurrentMember.PrevMember) ),
+         NULL,
+         [Measures].[Ventas Totales]
+           / ([Measures].[Ventas Totales], [Fecha].[Calendario].CurrentMember.PrevMember) - 1 ),
+    FORMAT_STRING = "Percent"
+SELECT
+  [Producto].[Categorías de producto].[Categoría].MEMBERS
+    * { [Measures].[Ventas Totales], [Measures].[Var. QoQ %] } ON COLUMNS,
+  NON EMPTY
+    DESCENDANTS( { [Fecha].[Calendario].[Año].&[2011] : [Fecha].[Calendario].[Año].&[2013] },
+                 [Fecha].[Calendario].[Trimestre] ) ON ROWS
+FROM [Cubo Ventas]
+
+-- (b) Ganancia por territorio, comparando Internet y Reseller
+SELECT
+  { [Measures].[Sales Amount], [Measures].[Sales Amount - Fact Reseller Sales],
+    [Measures].[Ganancia Internet], [Measures].[Ganancia Reseller],
+    [Measures].[Ganancia Total], [Measures].[Margen %] } ON COLUMNS,
+  NON EMPTY
+    ORDER( [Territorio].[Geografía].[Región].MEMBERS,
+           [Measures].[Ganancia Total], BDESC ) ON ROWS
+FROM [Cubo Ventas]
+
+-- (c) Top 10 productos por ganancia, con su ganancia por año
+WITH
+  SET [Top 10 Productos] AS
+    TOPCOUNT( [Producto].[Categorías de producto].[Producto].MEMBERS, 10,
+              [Measures].[Ganancia Total] )
+SELECT
+  NON EMPTY
+    { [Measures].[Ganancia Total] }
+    * { [Fecha].[Calendario].[All], [Fecha].[Calendario].[Año].MEMBERS } ON COLUMNS,
+  [Top 10 Productos] ON ROWS
+FROM [Cubo Ventas]
+
+-- (c.2) Ganancia trimestral del Top 10, separada por línea de producto
+WITH
+  SET [Top 10 Productos] AS
+    TOPCOUNT( [Producto].[Categorías de producto].[Producto].MEMBERS, 10,
+              [Measures].[Ganancia Total] )
+  MEMBER [Measures].[Ganancia Top 10] AS
+    SUM( [Top 10 Productos], [Measures].[Ganancia Total] ), FORMAT_STRING = "Currency"
+  MEMBER [Measures].[Mountain-200 (6)] AS
+    SUM( FILTER( [Top 10 Productos],
+                 LEFT( [Producto].[Categorías de producto].CurrentMember.Name, 12 ) = "Mountain-200" ),
+         [Measures].[Ganancia Total] ), FORMAT_STRING = "Currency"
+  MEMBER [Measures].[Road-150 (4)] AS
+    SUM( FILTER( [Top 10 Productos],
+                 LEFT( [Producto].[Categorías de producto].CurrentMember.Name, 8 ) = "Road-150" ),
+         [Measures].[Ganancia Total] ), FORMAT_STRING = "Currency"
+SELECT
+  { [Measures].[Ganancia Top 10], [Measures].[Mountain-200 (6)], [Measures].[Road-150 (4)] } ON COLUMNS,
+  NON EMPTY [Fecha].[Calendario].[Trimestre].MEMBERS ON ROWS
+FROM [Cubo Ventas]
