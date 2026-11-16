@@ -1,7 +1,9 @@
-# Despliega y procesa el cubo sin Visual Studio.
-# Visual Studio no puede desplegar en SQL Server 2025 Standard Developer
-# ("The current edition 'StandardDeveloper64' ... is not supported by the client"),
-# pero el proveedor MSOLAP sí se conecta. Requiere compilar antes el proyecto (Build).
+# Despliega y procesa el cubo; reemplaza la opción Deploy de Visual Studio.
+# Motivo: Deploy falla en SQL Server 2025 Standard Developer ("The current edition
+# 'StandardDeveloper64' ... is not supported by the client") porque la extensión de
+# Visual Studio no reconoce esa edición. El proveedor MSOLAP sí la reconoce, así que este
+# script envía al servidor la misma definición que compila Visual Studio y la procesa.
+# Uso: compilar el proyecto en Visual Studio (Build) y luego ejecutar este script.
 param(
   [string]$Servidor = "localhost",
   [string]$AsDatabase = "$PSScriptRoot\..\Cubo\AW_Cubo_Ventas\bin\AW_Cubo_Ventas.asdatabase"
